@@ -6,7 +6,7 @@ import statistics
 DATA_FILE = os.path.join(os.path.dirname(__file__), "..", "telemetry.json")
 
 
-def handler(request):
+def handler(request, context):
     # Handle CORS preflight
     if request.method == "OPTIONS":
         return {
@@ -21,11 +21,20 @@ def handler(request):
             "body": json.dumps({"error": "Method not allowed"})
         }
 
-    body = request.get_json()
+    try:
+        body = json.loads(request.body)
+    except:
+        return {
+            "statusCode": 400,
+            "headers": cors_headers(),
+            "body": json.dumps({"error": "Invalid JSON"})
+        }
+
     regions = body.get("regions", [])
     threshold = body.get("threshold_ms", 0)
 
-    data = load_data()
+    with open(DATA_FILE) as f:
+        data = json.load(f)
 
     result = {}
 
@@ -50,11 +59,6 @@ def handler(request):
         "headers": cors_headers(),
         "body": json.dumps(result)
     }
-
-
-def load_data():
-    with open(DATA_FILE) as f:
-        return json.load(f)
 
 
 def percentile(data, p):
