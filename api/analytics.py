@@ -1,34 +1,34 @@
 import json
 import os
 import statistics
+from fastapi import FastAPI, Request
+from fastapi.middleware.cors import CORSMiddleware
 
+app = FastAPI()
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_methods=["POST"],
+    allow_headers=["*"],
+)
 
 DATA_FILE = os.path.join(os.path.dirname(__file__), "..", "telemetry.json")
 
 
-def handler(request, context):
-    # Handle CORS preflight
-    if request.method == "OPTIONS":
-        return {
-            "statusCode": 200,
-            "headers": cors_headers()
-        }
+def percentile(data, p):
+    sorted_data = sorted(data)
+    k = (len(sorted_data) - 1) * (p / 100)
+    f = int(k)
+    c = min(f + 1, len(sorted_data) - 1)
+    if f == c:
+        return sorted_data[int(k)]
+    return sorted_data[f] + (sorted_data[c] - sorted_data[f]) * (k - f)
 
-    if request.method != "POST":
-        return {
-            "statusCode": 405,
-            "headers": cors_headers(),
-            "body": json.dumps({"error": "Method not allowed"})
-        }
 
-    try:
-        body = json.loads(request.body)
-    except:
-        return {
-            "statusCode": 400,
-            "headers": cors_headers(),
-            "body": json.dumps({"error": "Invalid JSON"})
-        }
+@app.post("/")
+async def analytics(request: Request):
+    body = await request.json()
 
     regions = body.get("regions", [])
     threshold = body.get("threshold_ms", 0)
@@ -51,30 +51,7 @@ def handler(request, context):
             "avg_latency": statistics.mean(latencies),
             "p95_latency": percentile(latencies, 95),
             "avg_uptime": statistics.mean(uptimes),
-            "breaches": sum(1 for l in latencies if l > threshold)
+            "breaches": sum(1 for l in latencies if l > threshold),
         }
 
-    return {
-        "statusCode": 200,
-        "headers": cors_headers(),
-        "body": json.dumps(result)
-    }
-
-
-def percentile(data, p):
-    sorted_data = sorted(data)
-    k = (len(sorted_data) - 1) * (p / 100)
-    f = int(k)
-    c = min(f + 1, len(sorted_data) - 1)
-    if f == c:
-        return sorted_data[int(k)]
-    return sorted_data[f] + (sorted_data[c] - sorted_data[f]) * (k - f)
-
-
-def cors_headers():
-    return {
-        "Access-Control-Allow-Origin": "*",
-        "Access-Control-Allow-Methods": "POST, OPTIONS",
-        "Access-Control-Allow-Headers": "Content-Type",
-        "Content-Type": "application/json"
-    }
+    return result
